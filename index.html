@@ -72,13 +72,14 @@
 
   <div class="bar" id="types" role="group" aria-label="Bet type"></div>
   <div class="bar" id="ranges" role="group" aria-label="Time range"></div>
+  <div class="bar" id="sportbar" role="group" aria-label="Sport"></div>
 
   <div class="card">
     <h2>Profit over time (units)</h2>
     <svg id="chart" viewBox="0 0 600 180" preserveAspectRatio="none" role="img" aria-label="Cumulative profit in units"></svg>
   </div>
 
-  <h2 class="sec">Bets by sport <span class="fine">· tap a sport to see its bets</span></h2>
+  <h2 class="sec" id="sec">Bets by sport</h2>
   <div class="sports" id="sports"></div>
   <div class="card empty" id="empty" hidden>No graded bets here yet.</div>
 
@@ -93,7 +94,7 @@
 (function () {
   var TYPES = ["All", "+EV", "Prop", "Outlier", "Parlay"];
   var RANGES = [["7 days", 7], ["30 days", 30], ["All time", 0]];
-  var state = { type: "All", days: 0, bets: [], open: {} };
+  var state = { type: "All", days: 0, sport: "All", sports: [], bets: [], open: {} };
   var HEAD = [["Date", ""], ["Bet", ""], ["Book", ""], ["Odds", "num"], ["Units", "num"], ["Result", ""],
               ["Profit", "num"], ["CLV", "num"]];
   var NAMES = { Parlay: "Parlays" };
@@ -126,7 +127,8 @@
       cutoff = d.toISOString().slice(0, 10);
     }
     return state.bets.filter(function (b) {
-      return (state.type === "All" || b.type === state.type) && (!cutoff || b.date >= cutoff);
+      return (state.type === "All" || b.type === state.type) && (!cutoff || b.date >= cutoff) &&
+             (state.sport === "All" || (b.sport || "Other") === state.sport);
     });
   }
 
@@ -212,7 +214,7 @@
         profit += b.profit;
       });
       var d = el("details", { "class": "sport" });
-      if (state.open[k]) d.open = true;
+      if (state.open[k] || state.sport !== "All") d.open = true;
       d.addEventListener("toggle", function () { state.open[k] = d.open; });
       var s = el("summary");
       s.appendChild(el("span", { "class": "name" }, NAMES[k] || k));
@@ -233,12 +235,19 @@
   function render() {
     buttons("types", TYPES, state.type, function (v) { state.type = v; });
     buttons("ranges", RANGES, state.days, function (v) { state.days = v; });
+    buttons("sportbar", [["All sports", "All"]].concat(state.sports.map(function (k) { return [NAMES[k] || k, k]; })),
+            state.sport, function (v) { state.sport = v; });
+    document.getElementById("sec").textContent = state.sport === "All" ? "Bets by sport · tap a sport to see its bets"
+      : (NAMES[state.sport] || state.sport) + " bets";
     var bets = chosen();
     stats(bets); chart(bets); table(bets);
   }
 
   fetch("results.json", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (data) {
     state.bets = data.bets || [];
+    var n = {};
+    state.bets.forEach(function (b) { var k = b.sport || "Other"; n[k] = (n[k] || 0) + 1; });
+    state.sports = Object.keys(n).sort(function (a, c) { return n[c] - n[a] || (a < c ? -1 : 1); });
     var when = new Date(data.updated);
     document.getElementById("sub").textContent = "Every graded " + (data.live ? "" : "pre-game ") +
       "bet, wins and losses, in units at the stake each alert showed. Updated " +
